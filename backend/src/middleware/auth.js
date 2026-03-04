@@ -1,96 +1,88 @@
 /**
  * Authentication Middleware
- * JWT Token verification and user authentication
+ * JWT token verification and role-based access control
  */
 
 const jwt = require('jsonwebtoken');
-const { User } = require('../models');
 const logger = require('../utils/logger');
+const { User } = require('../models');
 
+/**
+ * Verify JWT token
+ */
 const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        error: 'Authentication required',
-        message: 'No token provided'
-      });
+      return res.status(401).json({ error: 'No token provided' });
     }
 
     const token = authHeader.split(' ')[1];
     
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
-      // Get user from database
-      const user = await User.findByPk(decoded.id);
-      
-      if (!user) {
-        return res.status(401).json({
-          error: 'Authentication failed',
-          message: 'User not found'
-        });
-      }
-
-      if (!user.is_active) {
-        return res.status(401).json({
-          error: 'Authentication failed',
-          message: 'Account is deactivated'
-        });
-      }
-
-      // Attach user to request
-      req.user = user;
-      req.token = token;
-      next();
-    } catch (jwtError) {
-      if (jwtError.name === 'TokenExpiredError') {
-        return res.status(401).json({
-          error: 'Authentication failed',
-          message: 'Token expired'
-        });
-      }
-      if (jwtError.name === 'JsonWebTokenError') {
-        return res.status(401).json({
-          error: 'Authentication failed',
-          message: 'Invalid token'
-        });
-      }
-      throw jwtError;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    const user = await User.findByPk(decoded.userId);
+    
+    if (!user || !user.is_active) {
+      return res.status(401).json({ error: 'User not found or inactive' });
     }
+
+    req.user = user;
+    req.userId = user.id;
+    req.societyId = user.society_id;
+    
+    next();
   } catch (error) {
-    logger.error('Authentication error:', error);
-    return res.status(500).json({
-      error: 'Internal server error',
-      message: 'Authentication failed'
-    });
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired' });
+    }
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    logger.error('Auth middleware error:', error);
+    return res.status(500).json({ error: 'Authentication failed' });
   }
 };
 
-// Optional authentication - doesn't fail if no token
-const optionalAuth = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
+/**
+ * Role-based access control
+ */
+const authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    if (!roles.includes(req.user.user_type)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    next();
+  };
+};
+
+/**
+ * Check specific permissions
+ */
+const checkPermission = (permission) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userPermissions = req.user.role?.permissions || {};
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (userPermissions.all || userPermissions[permission]) {
       return next();
     }
 
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findByPk(decoded.id);
-    
-    if (user && user.is_active) {
-      req.user = user;
-      req.token = token;
-    }
-    
-    next();
-  } catch (error) {
-    // Continue without auth for optional routes
-    next();
-  }
+    return res.status(403).json({ error: 'Permission denied' });
+  };
 };
 
-module.exports = { authenticate, optionalAuth };
+module.exports = {
+  authenticate,
+  authorize,
+  checkPermission
+};
