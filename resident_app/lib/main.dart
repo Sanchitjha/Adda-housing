@@ -1,53 +1,49 @@
-/**
- * Adda Housing - Resident App
- * Main Entry Point
- */
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
 
-import 'app.dart';
-import 'core/di/injection_container.dart' as di;
-import 'core/theme/app_theme.dart';
+import 'core/config/theme.dart';
+import 'core/config/routes.dart';
+import 'core/config/api_client.dart';
+import 'core/services/notification_service.dart';
+import 'core/services/storage_service.dart';
+
 import 'features/auth/presentation/bloc/auth_bloc.dart';
+import 'features/home/presentation/bloc/home_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Hive
-  await Hive.initFlutter();
-  
-  // Set preferred orientations
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
-  
-  // Set system UI overlay style
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-    ),
-  );
-  
   // Initialize Firebase
   await Firebase.initializeApp();
   
-  // Initialize dependency injection
-  await di.init();
+  // Initialize services
+  await StorageService.init();
+  await NotificationService.init();
   
-  runApp(
-    MultiBlocProvider(
+  runApp(const AddaHousingApp());
+}
+
+class AddaHousingApp extends StatelessWidget {
+  const AddaHousingApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MultiBlocProvider(
       providers: [
-        BlocProvider<AuthBloc>(
-          create: (_) => di.sl<AuthBloc>()..add(AuthCheckRequested()),
+        BlocProvider(
+          create: (_) => AuthBloc()..add(CheckAuthStatus()),
+        ),
+        BlocProvider(
+          create: (_) => HomeBloc(),
         ),
       ],
-      child: const AddaHousingApp(),
-    ),
-  );
+      child: MaterialApp.router(
+        title: 'Adda Housing',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        routerConfig: AppRouter.router,
+      ),
+    );
+  }
 }
