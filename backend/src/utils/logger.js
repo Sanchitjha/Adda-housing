@@ -4,16 +4,12 @@
  */
 
 const winston = require('winston');
-const path = require('path');
 
 const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.errors({ stack: true }),
   winston.format.printf(({ timestamp, level, message, stack }) => {
-    if (stack) {
-      return `${timestamp} [${level.toUpperCase()}]: ${message}\n${stack}`;
-    }
-    return `${timestamp} [${level.toUpperCase()}]: ${message}`;
+    return `${timestamp} [${level.toUpperCase()}]: ${stack || message}`;
   })
 );
 
@@ -28,30 +24,23 @@ const logger = winston.createLogger({
       )
     }),
     new winston.transports.File({ 
-      filename: path.join(__dirname, '../../logs/error.log'), 
+      filename: 'logs/error.log', 
       level: 'error',
-      maxsize: 5242880, // 5MB
+      maxsize: 5242880,
       maxFiles: 5
     }),
     new winston.transports.File({ 
-      filename: path.join(__dirname, '../../logs/combined.log'),
+      filename: 'logs/combined.log',
       maxsize: 5242880,
       maxFiles: 5
     })
-  ],
-  exceptionHandlers: [
-    new winston.transports.File({ filename: path.join(__dirname, '../../logs/exceptions.log') })
-  ],
-  rejectionHandlers: [
-    new winston.transports.File({ filename: path.join(__dirname, '../../logs/rejections.log') })
   ]
 });
 
-// Create stream for Morgan HTTP logging
-logger.stream = {
-  write: (message) => {
-    logger.info(message.trim());
-  }
-};
+// Create logs directory if not exists
+const fs = require('fs');
+if (!fs.existsSync('logs')) {
+  fs.mkdirSync('logs');
+}
 
 module.exports = logger;
