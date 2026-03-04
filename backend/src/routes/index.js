@@ -1,12 +1,12 @@
 /**
- * API Routes Index
- * All route definitions
+ * Routes Index
+ * Main API routes configuration
  */
 
 const express = require('express');
 const router = express.Router();
 
-// Import all route modules
+// Import route modules
 const authRoutes = require('./auth.routes');
 const societyRoutes = require('./society.routes');
 const blockRoutes = require('./block.routes');
@@ -21,14 +21,17 @@ const staffRoutes = require('./staff.routes');
 const amenityRoutes = require('./amenity.routes');
 const amenityBookingRoutes = require('./amenityBooking.routes');
 const chatRoutes = require('./chat.routes');
-const reportRoutes = require('./report.routes');
 const dashboardRoutes = require('./dashboard.routes');
+const reportRoutes = require('./report.routes');
 
-// Public routes
+// Health check
+router.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// API Routes
 router.use('/auth', authRoutes);
 router.use('/societies', societyRoutes);
-
-// Protected routes
 router.use('/blocks', blockRoutes);
 router.use('/flats', flatRoutes);
 router.use('/users', userRoutes);
@@ -39,18 +42,14 @@ router.use('/notices', noticeRoutes);
 router.use('/visitors', visitorRoutes);
 router.use('/staff', staffRoutes);
 router.use('/amenities', amenityRoutes);
-router.use('/bookings', amenityBookingRoutes);
+router.use('/amenity-bookings', amenityBookingRoutes);
 router.use('/chat', chatRoutes);
-router.use('/reports', reportRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/reports', reportRoutes);
 
-// Health check
-router.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    version: '1.0.0'
-  });
+// 404 handler
+router.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
 });
 
 module.exports = router;
