@@ -1,271 +1,158 @@
-/**
- * Auth BLoC
- * Authentication State Management
- */
-
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:equatable/equatable.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../../../../core/config/api_client.dart';
 
 // Events
-abstract class AuthEvent extends Equatable {
-  @override
-  List<Object?> get props => [];
-}
+abstract class AuthEvent {}
 
-class AuthCheckRequested extends AuthEvent {}
+class CheckAuthStatus extends AuthEvent {}
 
-class AuthLoginRequested extends AuthEvent {
+class LoginRequested extends AuthEvent {
   final String phone;
   final String password;
 
-  AuthLoginRequested({required this.phone, required this.password});
-
-  @override
-  List<Object?> get props => [phone, password];
+  LoginRequested({required this.phone, required this.password});
 }
 
-class AuthOtpRequested extends AuthEvent {
+class RegisterRequested extends AuthEvent {
+  final String firstName;
+  final String lastName;
   final String phone;
+  final String password;
+  final String? email;
 
-  AuthOtpRequested({required this.phone});
-
-  @override
-  List<Object?> get props => [phone];
+  RegisterRequested({
+    required this.firstName,
+    required this.lastName,
+    required this.phone,
+    required this.password,
+    this.email,
+  });
 }
 
-class AuthOtpVerified extends AuthEvent {
+class OtpVerifyRequested extends AuthEvent {
+  final String phone;
   final String otp;
-  final String phone;
-  final bool isRegistration;
 
-  AuthOtpVerified({required this.otp, required this.phone, required this.isRegistration});
-
-  @override
-  List<Object?> get props => [otp, phone, isRegistration];
+  OtpVerifyRequested({required this.phone, required this.otp});
 }
 
-class AuthLogoutRequested extends AuthEvent {}
-
-class AuthSocietySelected extends AuthEvent {
-  final String societyId;
-
-  AuthSocietySelected({required this.societyId});
-
-  @override
-  List<Object?> get props => [societyId];
-}
+class LogoutRequested extends AuthEvent {}
 
 // States
-abstract class AuthState extends Equatable {
-  @override
-  List<Object?> get props => [];
-}
+abstract class AuthState {}
 
 class AuthInitial extends AuthState {}
 
 class AuthLoading extends AuthState {}
 
 class AuthAuthenticated extends AuthState {
-  final User user;
+  final Map<String, dynamic> user;
 
   AuthAuthenticated({required this.user});
-
-  @override
-  List<Object?> get props => [user];
 }
 
 class AuthUnauthenticated extends AuthState {}
-
-class AuthOtpSent extends AuthState {
-  final String phone;
-
-  AuthOtpSent({required this.phone});
-
-  @override
-  List<Object?> get props => [phone];
-}
 
 class AuthError extends AuthState {
   final String message;
 
   AuthError({required this.message});
-
-  @override
-  List<Object?> get props => [message];
 }
 
-// User Model
-class User {
-  final String id;
-  final String? firstName;
-  final String? lastName;
-  final String phone;
-  final String? email;
-  final String? profileImage;
-  final String? societyId;
-  final String? flatId;
-  final String? flatNumber;
-  final String userType;
-
-  User({
-    required this.id,
-    this.firstName,
-    this.lastName,
-    required this.phone,
-    this.email,
-    this.profileImage,
-    this.societyId,
-    this.flatId,
-    this.flatNumber,
-    this.userType = 'RESIDENT',
-  });
-
-  String get fullName => '${firstName ?? ''} ${lastName ?? ''}'.trim();
-
-  factory User.fromJson(Map<String, dynamic> json) {
-    return User(
-      id: json['id'] ?? '',
-      firstName: json['first_name'],
-      lastName: json['last_name'],
-      phone: json['phone'] ?? '',
-      email: json['email'],
-      profileImage: json['profile_image'],
-      societyId: json['society_id'],
-      flatId: json['flat_id'],
-      flatNumber: json['flat_number'],
-      userType: json['user_type'] ?? 'RESIDENT',
-    );
-  }
-}
-
-// BLoC
+// Bloc
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
+  final storage = const FlutterSecureStorage();
+
   AuthBloc() : super(AuthInitial()) {
-    on<AuthCheckRequested>(_onAuthCheckRequested);
-    on<AuthLoginRequested>(_onAuthLoginRequested);
-    on<AuthOtpRequested>(_onAuthOtpRequested);
-    on<AuthOtpVerified>(_onAuthOtpVerified);
-    on<AuthLogoutRequested>(_onAuthLogoutRequested);
-    on<AuthSocietySelected>(_onAuthSocietySelected);
+    on<CheckAuthStatus>(_onCheckAuthStatus);
+    on<LoginRequested>(_onLoginRequested);
+    on<RegisterRequested>(_onRegisterRequested);
+    on<OtpVerifyRequested>(_onOtpVerifyRequested);
+    on<LogoutRequested>(_onLogoutRequested);
   }
 
-  Future<void> _onAuthCheckRequested(
-    AuthCheckRequested event,
+  Future<void> _onCheckAuthStatus(
+    CheckAuthStatus event,
     Emitter<AuthState> emit,
   ) async {
-    emit(AuthLoading());
     try {
-      // Check for stored token
-      // final token = await SecureStorage.getToken();
-      // if (token != null) {
-      //   final user = await ApiService.getCurrentUser(token);
-      //   emit(AuthAuthenticated(user: user));
-      // } else {
-      emit(AuthUnauthenticated());
-      // }
+      final token = await storage.read(key: 'access_token');
+      if (token != null) {
+        final response = await ApiClient.getProfile();
+        emit(AuthAuthenticated(user: response.data));
+      } else {
+        emit(AuthUnauthenticated());
+      }
     } catch (e) {
       emit(AuthUnauthenticated());
     }
   }
 
-  Future<void> _onAuthLoginRequested(
-    AuthLoginRequested event,
+  Future<void> _onLoginRequested(
+    LoginRequested event,
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
     try {
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 1));
-      
-      // Mock successful login
-      final user = User(
-        id: 'user-123',
-        firstName: 'John',
-        lastName: 'Doe',
-        phone: event.phone,
-        email: 'john@example.com',
-        societyId: 'society-1',
-        flatId: 'flat-1',
-        flatNumber: '101',
-        userType: 'RESIDENT',
+      final response = await ApiClient.login(event.phone, event.password);
+      await storage.write(
+        key: 'access_token',
+        value: response.data['access_token'],
       );
-      
-      emit(AuthAuthenticated(user: user));
-    } catch (e) {
-      emit(AuthError(message: e.toString()));
-    }
-  }
-
-  Future<void> _onAuthOtpRequested(
-    AuthOtpRequested event,
-    Emitter<AuthState> emit,
-  ) async {
-    emit(AuthLoading());
-    try {
-      // Simulate OTP sending
-      await Future.delayed(const Duration(seconds: 1));
-      emit(AuthOtpSent(phone: event.phone));
-    } catch (e) {
-      emit(AuthError(message: e.toString()));
-    }
-  }
-
-  Future<void> _onAuthOtpVerified(
-    AuthOtpVerified event,
-    Emitter<AuthState> emit,
-  ) async {
-    emit(AuthLoading());
-    try {
-      // Simulate OTP verification
-      await Future.delayed(const Duration(seconds: 1));
-      
-      final user = User(
-        id: 'user-new-123',
-        firstName: 'New',
-        lastName: 'User',
-        phone: event.phone,
-        userType: 'RESIDENT',
+      await storage.write(
+        key: 'refresh_token',
+        value: response.data['refresh_token'],
       );
-      
-      emit(AuthAuthenticated(user: user));
+      emit(AuthAuthenticated(user: response.data['user']));
     } catch (e) {
-      emit(AuthError(message: e.toString()));
+      emit(AuthError(message: 'Invalid phone or password'));
     }
   }
 
-  Future<void> _onAuthLogoutRequested(
-    AuthLogoutRequested event,
+  Future<void> _onRegisterRequested(
+    RegisterRequested event,
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
     try {
-      // Clear stored token
-      // await SecureStorage.clearToken();
-      emit(AuthUnauthenticated());
+      await ApiClient.register({
+        'first_name': event.firstName,
+        'last_name': event.lastName,
+        'phone': event.phone,
+        'password': event.password,
+        'email': event.email,
+      });
+      emit(AuthAuthenticated(user: {}));
     } catch (e) {
-      emit(AuthError(message: e.toString()));
+      emit(AuthError(message: 'Registration failed'));
     }
   }
 
-  Future<void> _onAuthSocietySelected(
-    AuthSocietySelected event,
+  Future<void> _onOtpVerifyRequested(
+    OtpVerifyRequested event,
     Emitter<AuthState> emit,
   ) async {
-    if (state is AuthAuthenticated) {
-      final currentUser = (state as AuthAuthenticated).user;
-      final updatedUser = User(
-        id: currentUser.id,
-        firstName: currentUser.firstName,
-        lastName: currentUser.lastName,
-        phone: currentUser.phone,
-        email: currentUser.email,
-        profileImage: currentUser.profileImage,
-        societyId: event.societyId,
-        flatId: currentUser.flatId,
-        flatNumber: currentUser.flatNumber,
-        userType: currentUser.userType,
+    emit(AuthLoading());
+    try {
+      final response = await ApiClient.verifyOtp(event.phone, event.otp);
+      await storage.write(
+        key: 'access_token',
+        value: response.data['access_token'],
       );
-      emit(AuthAuthenticated(user: updatedUser));
+      emit(AuthAuthenticated(user: response.data['user']));
+    } catch (e) {
+      emit(AuthError(message: 'Invalid OTP'));
     }
+  }
+
+  Future<void> _onLogoutRequested(
+    LogoutRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    await storage.delete(key: 'access_token');
+    await storage.delete(key: 'refresh_token');
+    emit(AuthUnauthenticated());
   }
 }
